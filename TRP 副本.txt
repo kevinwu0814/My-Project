@@ -1,0 +1,125 @@
+###貝氏M1
+likeli_N_M1 <- function(para){
+  sigma2 <- 10^para[4] ; b <- 10^para[5]
+  mu <- 10^para[1:3] ; eta <- 10^para[6] ; tau <- 10^para[7]
+  A <- 0 ; B <- 0
+  for(j in 1:3){
+    temp1 <- log(dnorm(mu[j],eta,sqrt(tau*sigma2))/dgamma(sigma2,alpha,rate = beta))
+    B <- B + temp1
+    #print(B)
+    for(i in 2:(sum(diff(RB_S0[,j])!=0)+1)){
+      increment <- 1/b*(exp(b*RB_S0[i,j])-exp(b*RB_S0[i-1,j]))
+      temp2 <- dnorm(increment,mu[j],sqrt(sigma2),log=T)+log(1*exp(b*RB_S0[i,j]))
+      A <- A + temp2
+    }
+  }
+  #print(B)
+  L <- A + B
+  return(-L)
+}
+likeli_N_M1(log10(c(1,1,1,0.000006,0.0002,1,1)))
+pi.1 <- function(eta,tau,b){
+  log(dnorm(eta,mu.eta,sqrt(sigma2.eta))/dgamma(tau,alpha.tau,rate = beta.tau)*dunif(b,c,d))
+}
+mu.eta <- 1 ; sigma2.eta <- 1000 ; alpha.tau <- 0.0001 ;beta.tau <- 0.0001 ; alpha <- 0.0001 ; beta <- 0.0001 ; c <- 0 ; d <- 10
+mu.j0 <- matrix(c(1,1,1),1,3) ; eta0 <- 1 ; tau0 <- 1 ; sigma20 <- 0.000006 ; b0 <- 0.0002
+mu.j <- mu.j0 ; eta <- eta0 ; tau <- tau0 ; sigma2 <- sigma20 ; b <- b0
+
+b <- rep(0.0002,1000)
+step0 <- 0.00001#for b
+ac.b <- 0
+N <- 0
+for(j in 1:3){
+  for(k in 2:(sum(diff(RB_S0[,j])!=0)+1)){
+    N <- N + 1
+  }
+}
+
+temp.mu <- c()
+pb <- txtProgressBar(min = 0, max = 1000, style = 3)
+for(i in 2:1000){
+  print(i)
+  setTxtProgressBar(pb, i)
+  xij.mu <- 0 ; xij <- 0 ; mj <- 0
+  for(j in 1:3){
+    mj <- mj + sum(diff(RB_S0[,j])!=0)
+    for(k in 2:(sum(diff(RB_S0[,j])!=0)+1)){
+      xij.mu <- xij.mu + (1/b[i-1]*(exp(b[i-1]*RB_S0[k,j])-exp(b[i-1]*RB_S0[k-1,j]))-mu.j[i-1,j])^2
+      #xij <- xij + 1/b[i-1]*(exp(b[i-1]*RB_S0[k,j])-exp(b[i-1]*RB_S0[k-1,j]))
+    }
+  }
+  for(j in 1:3){
+    xij.par <- 0
+    for(k in 2:(sum(diff(RB_S0[,j])!=0)+1)){
+      xij.par <- xij.par + 1/b[i-1]*(exp(b[i-1]*RB_S0[k,j])-exp(b[i-1]*RB_S0[k-1,j]))
+    }
+    temp.mu[j] <- rnorm(1,(tau[i-1]*xij.par+eta[i-1])/(sum(diff(RB_S0[,j])!=0)*tau[i-1]+1),
+                        sqrt( (sigma2[i-1]*tau[i-1])/(sum(diff(RB_S0[,j])!=0)*tau[i-1]+1) ) )
+    while(temp.mu[j]<0){
+      temp.mu[j] <- rnorm(1,(tau[i-1]*xij.par+eta[i-1])/(sum(diff(RB_S0[,j])!=0)*tau[i-1]+1),
+                          sqrt( (sigma2[i-1]*tau[i-1])/(sum(diff(RB_S0[,j])!=0)*tau[i-1]+1) ) )
+    }
+  }
+  mu.j <- rbind(mu.j,temp.mu)
+  eta[i] <- rnorm(1, (sigma2.eta*sum(temp.mu)+tau[i-1]*sigma2[i-1]*mu.eta)/(3*sigma2.eta+tau[i-1]*sigma2[i-1]) , 
+                  sqrt( (tau[i-1]*sigma2[i-1]*sigma2.eta)/(3*sigma2.eta+tau[i-1]*sigma2[i-1]) ) )
+  while(eta[i]<0){
+    eta[i] <- rnorm(1, (sigma2.eta*sum(temp.mu)+tau[i-1]*sigma2[i-1]*mu.eta)/(3*sigma2.eta+tau[i-1]*sigma2[i-1]) , 
+                    sqrt( (tau[i-1]*sigma2[i-1]*sigma2.eta)/(3*sigma2.eta+tau[i-1]*sigma2[i-1]) ) )
+  }
+  tau[i] <- 1/rgamma(1, 3/2+alpha.tau ,rate = sum((temp.mu-eta[i])^2)/2/sigma2[i-1]+beta.tau )
+  while(tau[i]<0){
+    tau[i] <- 1/rgamma(1, 3/2+alpha.tau ,rate = sum((temp.mu-eta[i])^2)/2/sigma2[i-1]+beta.tau )
+  }
+  sigma2[i] <- 1/rgamma(1, (mj+3)/2+3*(alpha+1)-1  ,rate = xij.mu/2+ sum((temp.mu-eta[i])^2)/2/tau[i]+3*beta  )
+  while(sigma2[i]<0){
+    sigma2[i] <- 1/rgamma(1, (mj+3)/2+3*(alpha+1)-1  ,rate = xij.mu/2+ sum((temp.mu-eta[i])^2)/2/tau[i]+3*beta  )
+  }
+  
+  u <- runif(1)
+  b[i] <- rnorm(1,b[i-1],step0)
+  while(b[i]<0){
+    b[i] <- rnorm(1,b[i-1],step0) 
+  }
+  i
+  temp2 <- min(likeli_N_M1( log10(c(mu.j[i,],sigma2[i],b[i-1],eta[i],tau[i])) )-likeli_N_M1(log10(c(mu.j[i,],sigma2[i],b[i],eta[i],tau[i])))+
+                 pi.1(eta[i],tau[i],b[i])-pi.1(eta[i],tau[i],b[i-1]) ,0)
+  if(temp2=='NaN'){
+    temp2 <- 0
+    print('NaN')
+  }
+  if(log(u)<temp2){
+    b[i] <- b[i]
+    ac.b <- ac.b + 1
+  }else{
+    b[i] <- b[i-1]
+  }
+  #mu[i] <- rnorm(1,mu[i-1],step0[1])
+  #while(mu[i]<0){
+  #  mu[i] <- rnorm(1,mu[i-1],step0[1])
+  #}
+  #temp1 <- min(likeli_N_M0(log10(c(mu[i-1],sigma2[i],b[i-1])))-likeli_N_M0(log10(c(mu[i],sigma2[i],b[i-1])))+
+  # pi.0(mu[i],sigma2[i],b[i-1])-pi.0(mu[i-1],sigma2[i],b[i-1]) ,0)
+  #if(temp1=='NaN'){
+  #  temp1 <- 0
+  #}
+  #if(log(u)<temp1){
+  #  mu[i] <- mu[i]
+  #  ac.mu <- ac.mu + 1
+  # }else{
+  #  mu[i] <- mu[i-1]
+  # }
+  
+  if(i==200|i==1000|i==3000){
+    print(step0)
+    mean.ac <- ac.b/i  
+    print(mean.ac)
+    step0 <- exp( log(step0) + log(mean.ac/(1-mean.ac)) - log(0.4/0.6) )
+  }
+}
+mu.j
+plot(mu.j[,1])
+plot(eta)
+plot(tau)
+plot(sigma2)
+plot(b)
